@@ -59,6 +59,7 @@ private open class FlutterMindfulMinutesPluginPigeonCodec : StandardMessageCodec
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface FlutterMindfulMinutesHostApi {
   fun isAvailable(callback: (Result<Boolean>) -> Unit)
+  fun hasPermission(callback: (Result<Boolean>) -> Unit)
   fun requestPermission(callback: (Result<Boolean>) -> Unit)
   fun writeMindfulMinutes(startSeconds: Long, endSeconds: Long, callback: (Result<Boolean>) -> Unit)
 
@@ -76,6 +77,24 @@ interface FlutterMindfulMinutesHostApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.isAvailable{ result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(FlutterMindfulMinutesPluginPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(FlutterMindfulMinutesPluginPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.flutter_mindful_minutes.FlutterMindfulMinutesHostApi.hasPermission$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.hasPermission{ result: Result<Boolean> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(FlutterMindfulMinutesPluginPigeonUtils.wrapError(error))

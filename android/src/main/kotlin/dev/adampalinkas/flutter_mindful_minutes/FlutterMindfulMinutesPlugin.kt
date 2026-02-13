@@ -126,6 +126,18 @@ class FlutterMindfulMinutesPlugin() :
         callback(Result.success(true))
     }
 
+    override fun hasPermission(callback: (Result<Boolean>) -> Unit) {
+        val healthConnectClient = HealthConnectClient.getOrCreate(activityBinding!!.activity)
+        scope.launch {
+            val granted = healthConnectClient.permissionController.getGrantedPermissions()
+            if (granted.containsAll(permissions)) {
+                callback(Result.success(true))
+            } else {
+                callback(Result.success(false))
+            }
+        }
+    }
+
     override fun requestPermission(callback: (Result<Boolean>) -> Unit) {
         log("requestMindfulMinutesAuthorization")
         scope.launch {
@@ -199,7 +211,6 @@ class FlutterMindfulMinutesPlugin() :
         if (sdkStatus == HealthConnectClient.SDK_UNAVAILABLE) {
             log("Health Connect SDK is not available")
             return false
-
         }
         if (sdkStatus == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
             log("Health Connect provider update required")

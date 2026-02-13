@@ -17,7 +17,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
 
   bool _initialized = false;
-  bool _hasAccess = false;
+  bool _hasPermissions = false;
   bool _isAvailable = false;
   final _flutterMindfulMinutesPlugin = FlutterMindfulMinutes();
 
@@ -28,16 +28,16 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> initPlatformState() async {
-    bool isAvailable = false;
-    try {
-      isAvailable = await _flutterMindfulMinutesPlugin.isAvailable();
-    } catch (e) {
-      isAvailable = false;
-    }
-
+    final results = await Future.wait<bool>([
+      _flutterMindfulMinutesPlugin.isAvailable().catchError((_) => false),
+      _flutterMindfulMinutesPlugin.hasPermission().catchError((_) => false),
+    ]);
     if (!mounted) return;
+    final isAvailable = results[0];
+    final hasAccess = results[1];
     setState(() {
       _initialized = true;
+      _hasPermissions = hasAccess;
       _isAvailable = isAvailable;
     });
   }
@@ -45,7 +45,7 @@ class _MyAppState extends State<MyApp> {
   void onRequestPermission() async {
     final hasAccess = await _flutterMindfulMinutesPlugin.requestPermission();
     setState(() {
-      _hasAccess = hasAccess;
+      _hasPermissions = hasAccess;
     });
   }
 
@@ -73,18 +73,48 @@ class _MyAppState extends State<MyApp> {
         appBar: AppBar(
           title: const Text('Plugin example app'),
         ),
-        body: Column(
-          children: [
-            Text('Has access to mindful minutes: $_hasAccess\n'),
-            TextButton(
-              onPressed: onRequestPermission,
-              child: const Text('Request access'),
-            ),
-            TextButton(
-              onPressed: () => onWriteMindfulMinutes(context),
-              child: const Text('Write mindful minutes'),
-            ),
-          ]
+        // Push down builder results in the widget tree to make
+        // ScaffoldMessenger available in the onWriteMindfulMinutes function.
+        body: Builder(
+          builder: (ctx) {
+            if (!_initialized) {
+              return const CircularProgressIndicator();
+            }
+            return Column(
+              children: [
+                ListTile(
+                  title: const Text('Is mindful minutes API available?'),
+                  trailing: Icon(
+                    _isAvailable ? Icons.check : Icons.close,
+                    color: _isAvailable ? Colors.green : Colors.red,
+                  ),
+                ),
+                ListTile(
+                  title: const Text('Has permission to write mindful minutes?'),
+                  trailing: Icon(
+                    _hasPermissions ? Icons.check : Icons.close,
+                    color: _hasPermissions ? Colors.green : Colors.red,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: onRequestPermission,
+                        child: const Text('Request access'),
+                      ),
+                    ),
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => onWriteMindfulMinutes(ctx),
+                        child: const Text('Write mindful minutes'),
+                      ),
+                    )
+                  ],
+                ),
+              ]
+            );
+          },
         ),
       ),
     );
