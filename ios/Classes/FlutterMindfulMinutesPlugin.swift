@@ -24,7 +24,40 @@ public class FlutterMindfulMinutesPlugin: NSObject, FlutterPlugin {
 
 class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
   
-  func requestMindfulMinutesAuthorization(completion: @escaping (Result<Bool, any Error>) -> Void) {
+  func isAvailable(completion: @escaping (Result<Bool, any Error>) -> Void) {
+    completion(.success(HKHealthStore.isHealthDataAvailable()))
+  }
+  
+  func hasPermission(completion: @escaping (Result<Bool, any Error>) -> Void) {
+    // Check if HealthKit is available
+    guard HKHealthStore.isHealthDataAvailable() else {
+      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 6, userInfo: [NSLocalizedDescriptionKey: "Health data is not available on this device."])) )
+      return
+    }
+
+    // Get the mindful session type
+    guard let mindfulType = HKObjectType.categoryType(forIdentifier: .mindfulSession) else {
+      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 7, userInfo: [NSLocalizedDescriptionKey: "Mindful Session type is unavailable."])) )
+      return
+    }
+
+    // Check authorization status for writing (sharing) mindful minutes
+    let healthStore = HKHealthStore()
+    let status = healthStore.authorizationStatus(for: mindfulType)
+
+    switch status {
+    case .sharingAuthorized:
+      completion(.success(true))
+    case .sharingDenied:
+      completion(.success(false))
+    case .notDetermined:
+      completion(.success(false))
+    @unknown default:
+      completion(.success(false))
+    }
+  }
+  
+  func requestPermission(completion: @escaping (Result<Bool, any Error>) -> Void) {
     // Request authorization to write Mindful Minutes (mindfulSession) to HealthKit
     let healthStore = HKHealthStore()
 
