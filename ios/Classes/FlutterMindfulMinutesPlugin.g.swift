@@ -88,7 +88,8 @@ class FlutterMindfulMinutesPluginPigeonCodec: FlutterStandardMessageCodec, @unch
 
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol FlutterMindfulMinutesHostApi {
-  func requestMindfulMinutesAuthorization(completion: @escaping (Result<Bool, Error>) -> Void)
+  func isAvailable(completion: @escaping (Result<Bool, Error>) -> Void)
+  func requestPermission(completion: @escaping (Result<Bool, Error>) -> Void)
   func writeMindfulMinutes(startSeconds: Int64, endSeconds: Int64, completion: @escaping (Result<Bool, Error>) -> Void)
 }
 
@@ -98,10 +99,10 @@ class FlutterMindfulMinutesHostApiSetup {
   /// Sets up an instance of `FlutterMindfulMinutesHostApi` to handle messages through the `binaryMessenger`.
   static func setUp(binaryMessenger: FlutterBinaryMessenger, api: FlutterMindfulMinutesHostApi?, messageChannelSuffix: String = "") {
     let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
-    let requestMindfulMinutesAuthorizationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_mindful_minutes.FlutterMindfulMinutesHostApi.requestMindfulMinutesAuthorization\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    let isAvailableChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_mindful_minutes.FlutterMindfulMinutesHostApi.isAvailable\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
-      requestMindfulMinutesAuthorizationChannel.setMessageHandler { _, reply in
-        api.requestMindfulMinutesAuthorization { result in
+      isAvailableChannel.setMessageHandler { _, reply in
+        api.isAvailable { result in
           switch result {
           case .success(let res):
             reply(wrapResult(res))
@@ -111,7 +112,22 @@ class FlutterMindfulMinutesHostApiSetup {
         }
       }
     } else {
-      requestMindfulMinutesAuthorizationChannel.setMessageHandler(nil)
+      isAvailableChannel.setMessageHandler(nil)
+    }
+    let requestPermissionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_mindful_minutes.FlutterMindfulMinutesHostApi.requestPermission\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      requestPermissionChannel.setMessageHandler { _, reply in
+        api.requestPermission { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      requestPermissionChannel.setMessageHandler(nil)
     }
     let writeMindfulMinutesChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_mindful_minutes.FlutterMindfulMinutesHostApi.writeMindfulMinutes\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

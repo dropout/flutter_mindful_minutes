@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_mindful_minutes/flutter_mindful_minutes.dart';
 
 void main() {
@@ -16,10 +15,11 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+
+  bool _initialized = false;
   bool _hasAccess = false;
+  bool _isAvailable = false;
   final _flutterMindfulMinutesPlugin = FlutterMindfulMinutes();
-
-
 
   @override
   void initState() {
@@ -27,26 +27,43 @@ class _MyAppState extends State<MyApp> {
     initPlatformState();
   }
 
-  // Platform messages are asynchronous, so we initialize in an async method.
   Future<void> initPlatformState() async {
-    // String platformVersion;
-    // Platform messages may fail, so we use a try/catch PlatformException.
-    // We also handle the message potentially returning null.
-    // try {
-    //   platformVersion =
-    //       await _flutterMindfulMinutesPlugin.getPlatformVersion() ?? 'Unknown platform version';
-    // } on PlatformException {
-    //   platformVersion = 'Failed to get platform version.';
-    // }
+    bool isAvailable = false;
+    try {
+      isAvailable = await _flutterMindfulMinutesPlugin.isAvailable();
+    } catch (e) {
+      isAvailable = false;
+    }
 
-    // If the widget was removed from the tree while the asynchronous platform
-    // message was in flight, we want to discard the reply rather than calling
-    // setState to update our non-existent appearance.
-  //   if (!mounted) return;
-  //
-  //   setState(() {
-  //     _platformVersion = platformVersion;
-  //   });
+    if (!mounted) return;
+    setState(() {
+      _initialized = true;
+      _isAvailable = isAvailable;
+    });
+  }
+
+  void onRequestPermission() async {
+    final hasAccess = await _flutterMindfulMinutesPlugin.requestPermission();
+    setState(() {
+      _hasAccess = hasAccess;
+    });
+  }
+
+  void onWriteMindfulMinutes(BuildContext context) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final now = DateTime.now();
+    final startTime = now.subtract(const Duration(minutes: 30));
+    final endTime = now;
+    try {
+      await _flutterMindfulMinutesPlugin.writeMindfulMinutes(startTime, endTime);
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Successfully wrote mindful minutes')),
+      );
+    } catch (e) {
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Failed to write mindful minutes')),
+      );
+    }
   }
 
   @override
@@ -60,24 +77,11 @@ class _MyAppState extends State<MyApp> {
           children: [
             Text('Has access to mindful minutes: $_hasAccess\n'),
             TextButton(
-              onPressed: () async {
-                final hasAccess = await _flutterMindfulMinutesPlugin.requestMindfulMinutesAuthorization();
-                setState(() {
-                  _hasAccess = hasAccess;
-                });
-              },
+              onPressed: onRequestPermission,
               child: const Text('Request access'),
             ),
             TextButton(
-              onPressed: () async {
-                final now = DateTime.now();
-                final startTime = now.subtract(const Duration(minutes: 30));
-                final endTime = now;
-                final success = await _flutterMindfulMinutesPlugin.writeMindfulMinutes(startTime, endTime);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(success ? 'Successfully wrote mindful minutes' : 'Failed to write mindful minutes')),
-                );
-              },
+              onPressed: () => onWriteMindfulMinutes(context),
               child: const Text('Write mindful minutes'),
             ),
           ]

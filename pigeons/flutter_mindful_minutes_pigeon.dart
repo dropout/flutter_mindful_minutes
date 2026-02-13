@@ -14,7 +14,10 @@ import 'package:pigeon/pigeon.dart';
 abstract class FlutterMindfulMinutesHostApi {
 
   @async
-  bool requestMindfulMinutesAuthorization();
+  bool isAvailable();
+
+  @async
+  bool requestPermission();
 
   @async
   bool writeMindfulMinutes(int startSeconds, int endSeconds);
