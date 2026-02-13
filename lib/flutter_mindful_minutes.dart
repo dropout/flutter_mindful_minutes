@@ -13,6 +13,11 @@ class FlutterMindfulMinutes {
     return await _api.isAvailable();
   }
 
+  /// Checks if the app has permission to write mindful minutes.
+  Future<bool> hasPermission() async {
+    return await _api.hasPermission();
+  }
+
   /// Requests permission to write mindful minutes.
   /// This will show a system dialog to the user.
   /// Returns true if the user granted permission, false otherwise.

@@ -17,6 +17,9 @@ abstract class FlutterMindfulMinutesHostApi {
   bool isAvailable();
 
   @async
+  bool hasPermission();
+
+  @async
   bool requestPermission();
 
   @async
