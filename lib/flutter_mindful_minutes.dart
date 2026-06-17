@@ -1,4 +1,5 @@
 import 'package:flutter_mindful_minutes/flutter_mindful_minutes.g.dart';
+export 'package:flutter_mindful_minutes/flutter_mindful_minutes.g.dart' show AuthorizationStatus, RequestStatusForAuthorization, AuthorizationResult;
 
 /// FlutterMindfulMinutes is a Flutter Plugin that allows you
 /// to write mindful minutes to the system on Android and iOS.
@@ -14,15 +15,20 @@ class FlutterMindfulMinutes {
   }
 
   /// Checks if the app has permission to write mindful minutes.
-  Future<bool> hasPermission() async {
-    return await _api.hasPermission();
+  Future<AuthorizationStatus> getAuthorizationStatus() async {
+    return await _api.getAuthorizationStatus();
+  }
+
+  /// Checks if the app should request permission to write mindful minutes.
+  Future<RequestStatusForAuthorization> getRequestForAuthorizationStatus() async {
+    return await _api.getRequestForAuthorizationStatus();
   }
 
   /// Requests permission to write mindful minutes.
-  /// This will show a system dialog to the user.
+  /// This will show a system dialog/sheet to the user.
   /// Returns true if the user granted permission, false otherwise.
-  Future<bool> requestPermission() async {
-    return await _api.requestPermission();
+  Future<bool> requestAuthorization() async {
+    return await _api.requestAuthorization();
   }
 
   /// Writes mindful minutes to the system.
@@ -37,3 +43,4 @@ class FlutterMindfulMinutes {
   }
 
 }
+

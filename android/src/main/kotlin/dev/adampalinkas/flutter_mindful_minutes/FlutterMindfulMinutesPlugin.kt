@@ -91,7 +91,7 @@ class FlutterMindfulMinutesPlugin() :
      */
 
     override fun isAvailable(callback: (Result<Boolean>) -> Unit) {
-        log("Checking is functionality is available")
+        log("Checking if functionality is available")
         val ctx = context
 
         if (ctx == null) {

@@ -1,11 +1,14 @@
 import Flutter
 import UIKit
 import HealthKit
+import Logging
+import SwiftUI
+
+
 
 var _hostApi : FlutterMindfulMinutesHostApi? = nil
 
 public class FlutterMindfulMinutesPlugin: NSObject, FlutterPlugin {
-
   
   public static func register(with registrar: FlutterPluginRegistrar) {
     let messenger = registrar.messenger()
@@ -24,40 +27,99 @@ public class FlutterMindfulMinutesPlugin: NSObject, FlutterPlugin {
 
 class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
   
+  let logger: Logger
+  
+  init() {
+    var logger = Logger(label: "FlutterMindfulMinutesHostApiImpl")
+    #if DEBUG
+    logger.logLevel = .debug
+    #endif    
+    self.logger = logger
+  }
+  
   func isAvailable(completion: @escaping (Result<Bool, any Error>) -> Void) {
+    logger.debug("Checking if HealthKit is available")
     completion(.success(HKHealthStore.isHealthDataAvailable()))
   }
   
-  func hasPermission(completion: @escaping (Result<Bool, any Error>) -> Void) {
+  func getAuthorizationStatus(completion: @escaping (Result<AuthorizationStatus, any Error>) -> Void) {
+    logger.debug("Getting authorization status")
+    
     // Check if HealthKit is available
     guard HKHealthStore.isHealthDataAvailable() else {
-      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 6, userInfo: [NSLocalizedDescriptionKey: "Health data is not available on this device."])) )
+      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 6, userInfo: [NSLocalizedDescriptionKey: "Health data is not available on this device, cannot check authorization for writing mindful minutes."])) )
       return
     }
 
     // Get the mindful session type
     guard let mindfulType = HKObjectType.categoryType(forIdentifier: .mindfulSession) else {
-      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 7, userInfo: [NSLocalizedDescriptionKey: "Mindful Session type is unavailable."])) )
+      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 7, userInfo: [NSLocalizedDescriptionKey: "Mindful Session type is unavailable, cannot check authorization for writing mindful minutes."])) )
       return
     }
 
     // Check authorization status for writing (sharing) mindful minutes
+    // For reading status cannot be determined because of privacy policies
     let healthStore = HKHealthStore()
     let status = healthStore.authorizationStatus(for: mindfulType)
-
+    
+    
+    logger.debug("Authorization status: \(status)")
     switch status {
-    case .sharingAuthorized:
-      completion(.success(true))
-    case .sharingDenied:
-      completion(.success(false))
-    case .notDetermined:
-      completion(.success(false))
-    @unknown default:
-      completion(.success(false))
+      case .sharingAuthorized:
+        completion(.success(.authorized))
+      break
+      case .sharingDenied:
+        completion(.success(.denied))
+      break
+      case .notDetermined:
+        completion(.success(.notDetermined))
+      break
+      @unknown default:
+        completion(.success(.unknown))
+      break
     }
   }
   
-  func requestPermission(completion: @escaping (Result<Bool, any Error>) -> Void) {
+  func getRequestForAuthorizationStatus(completion: @escaping (Result<RequestStatusForAuthorization, Error>) -> Void) {
+    logger.debug("Getting status for the request")
+    
+    // Check if HealthKit is available
+    guard HKHealthStore.isHealthDataAvailable() else {
+      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 6, userInfo: [NSLocalizedDescriptionKey: "Health data is not available on this device, cannot check authorization for writing mindful minutes."])) )
+      return
+    }
+
+    // Get the mindful session type
+    guard let mindfulType = HKObjectType.categoryType(forIdentifier: .mindfulSession) else {
+      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 7, userInfo: [NSLocalizedDescriptionKey: "Mindful Session type is unavailable, cannot check authorization for writing mindful minutes."])) )
+      return
+    }
+    
+    let healthStore = HKHealthStore()
+    healthStore.getRequestStatusForAuthorization(toShare: [mindfulType], read: [mindfulType]) { (status, error) in
+      if let error = error {
+        completion(.failure(error))
+      } else {
+        switch status {
+          case .shouldRequest:
+            completion(.success(.shouldRequest))
+          break
+          case .unnecessary:
+            completion(.success(.unnecessary))
+          break
+          case .unknown:
+            completion(.success(.unknown))
+          break
+          @unknown default:
+            completion(.success(.unknown))
+          break
+        }
+      }
+    }
+  }
+  
+  func requestAuthorization(completion: @escaping (Result<Bool, any Error>) -> Void) {
+    logger.debug("Requesting authorization")
     // Request authorization to write Mindful Minutes (mindfulSession) to HealthKit
     let healthStore = HKHealthStore()
 
@@ -75,13 +137,15 @@ class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
 
     let toShare: Set<HKSampleType> = [mindfulType]
     let toRead: Set<HKObjectType> = [mindfulType]
-
+          
+    // Success in .requestAuthorization only indicates wheter the sheet have been presented or not
     healthStore.requestAuthorization(toShare: toShare, read: toRead) { success, error in
       if let error = error {
         completion(.failure(error))
         return
       }
       completion(.success(success))
+      self.logger.debug("Authorization request complete with result: \(success)")
     }
   }
   
