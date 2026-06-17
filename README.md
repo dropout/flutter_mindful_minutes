@@ -187,11 +187,14 @@ Public API (Dart):
 - `Future<bool> isAvailable()`
   - Returns `true` if the platform's health API and mindfulness session record type are supported and available.
 
-- `Future<bool> hasPermission()`
-  - Returns `true` if the app already has permission to write mindful minutes.
+- `Future<AuthorizationStatus> getAuthorizationStatus()`
+  - Returns the current permission status for writing mindful minutes (`denied`, `notDetermined`, `authorized`, or `unknown`).
 
-- `Future<bool> requestPermission()`
-  - Shows the platform permission UI where relevant and returns `true` if permission was granted.
+- `Future<RequestStatusForAuthorization> getRequestForAuthorizationStatus()`
+  - Returns whether the app should request authorization (`shouldRequest`, `unnecessary`, or `unknown`).
+
+- `Future<bool> requestAuthorization()`
+  - Requests the platform authorization UI when available. The returned bool indicates request-flow success, not whether permission is currently granted.
 
 - `Future<void> writeMindfulMinutes(DateTime startTime, DateTime endTime)`
   - Writes a mindful session for the provided start and end time. The plugin converts `DateTime` values to seconds and sends them to the platform layer.
@@ -205,16 +208,26 @@ void main() async {
   final available = await plugin.isAvailable();
   if (!available) return; // platform does not support mindful minutes
 
-  final hasPermission = await plugin.hasPermission();
-  if (!hasPermission) {
-    final granted = await plugin.requestPermission();
-    if (!granted) return; // user declined
+  final authorizationStatus = await plugin.getAuthorizationStatus();
+  if (authorizationStatus != AuthorizationStatus.authorized) {
+    final requestStatus = await plugin.getRequestForAuthorizationStatus();
+    if (requestStatus == RequestStatusForAuthorization.shouldRequest) {
+      final didRequestSucceed = await plugin.requestAuthorization();
+      if (!didRequestSucceed) return; // request flow failed or was suppressed
+    }
+
+    final updatedStatus = await plugin.getAuthorizationStatus();
+    if (updatedStatus != AuthorizationStatus.authorized) {
+      return; // still not authorized
+    }
   }
 
   final now = DateTime.now();
   await plugin.writeMindfulMinutes(now.subtract(Duration(minutes: 20)), now);
 }
 ```
+
+
 
 ---
 
@@ -271,6 +284,18 @@ sequenceDiagram
 - The plugin currently records a `title` of "Meditation" (Android) and uses a category HK sample on iOS. If you want localized/custom titles, consider contributing a PR to expose a title parameter.
 
 - Permission flows are platform-native. The plugin returns `false`/throws when the permission flow cannot be completed or is denied.
+
+### Cross-platform authorization-status normalization
+
+The Dart API intentionally hides a key platform difference behind `getRequestForAuthorizationStatus()`.
+While there is no API for that Android also supresses repeatedly shown request dialogs according to the "Two-strike" rule.
+
+- On iOS, the native implementation can directly query HealthKit with `getRequestStatusForAuthorization(toShare:read:)` and map that result to `RequestStatusForAuthorization`.
+- On Android, Health Connect does not expose an equivalent direct API for this specific flow, so the plugin derives the same Dart-level status by combining:
+  - current granted-permission state, and
+  - a persisted denial counter (`PermissionDenialCounter`) that tracks repeated denials and treats over-limit requests as `unnecessary`.
+
+This gives Flutter callers one consistent permission-check API, while platform-specific behavior remains encapsulated in native code.
 
 ---
 
