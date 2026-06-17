@@ -10,37 +10,30 @@ class FlutterMindfulMinutes {
   final _api = FlutterMindfulMinutesHostApi();
 
   /// Checks if the mindful minutes API is available on the current device.
-  Future<bool> isAvailable() async {
-    return await _api.isAvailable();
-  }
+  Future<bool> isAvailable() => _api.isAvailable();  
 
   /// Checks if the app has permission to write mindful minutes.
-  Future<AuthorizationStatus> getAuthorizationStatus() async {
-    return await _api.getAuthorizationStatus();
-  }
+  Future<AuthorizationStatus> getAuthorizationStatus() => _api.getAuthorizationStatus();  
 
   /// Checks if the app should request permission to write mindful minutes.
-  Future<RequestStatusForAuthorization> getRequestForAuthorizationStatus() async {
-    return await _api.getRequestForAuthorizationStatus();
-  }
+  Future<RequestStatusForAuthorization> getRequestForAuthorizationStatus() => 
+    _api.getRequestForAuthorizationStatus();  
 
-  /// Requests permission to write mindful minutes.
-  /// This will show a system dialog/sheet to the user.
-  /// Returns true if the user granted permission, false otherwise.
-  Future<bool> requestAuthorization() async {
-    return await _api.requestAuthorization();
-  }
+  /// Requests to open the system dialog/sheet to request permission to write and read mindful minutes.
+  /// Note:
+  /// - the result doesn't mean that the user granted permission
+  /// - the result doesn't mean that the system dialog/sheet was shown (it may have been suppressed by the system)
+  Future<bool> requestAuthorization() => _api.requestAuthorization();
 
   /// Writes mindful minutes to the system.
   /// [startTime] and [endTime] are the start and end times of
   /// mindful minutes exercised.
-  Future<void> writeMindfulMinutes(DateTime startTime, DateTime endTime) async {
-    // Communication between platforms is done in seconds.
-    await _api.writeMindfulMinutes(
+  // Communication between platforms is done in seconds.
+  Future<void> writeMindfulMinutes(DateTime startTime, DateTime endTime) =>    
+    _api.writeMindfulMinutes(
       (startTime.millisecondsSinceEpoch / 1000).toInt(),
       (endTime.millisecondsSinceEpoch / 1000).toInt(),
     );
-  }
 
 }
 

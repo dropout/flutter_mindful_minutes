@@ -1,6 +1,8 @@
 package dev.adampalinkas.flutter_mindful_minutes
 
+import AuthorizationStatus
 import FlutterMindfulMinutesHostApi
+import RequestStatusForAuthorization
 import android.content.Context
 import androidx.activity.result.ActivityResultLauncher
 import androidx.health.connect.client.HealthConnectClient
@@ -19,8 +21,14 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.runBlocking
 import java.time.Instant
 import java.time.ZoneOffset
+
+
+
+
+
 
 
 /** FlutterMindfulMinutesPlugin */
@@ -126,19 +134,57 @@ class FlutterMindfulMinutesPlugin() :
         callback(Result.success(true))
     }
 
-    override fun hasPermission(callback: (Result<Boolean>) -> Unit) {
+
+    override fun getRequestForAuthorizationStatus(callback: (Result<RequestStatusForAuthorization>) -> Unit) {
+        val ctx = context
+        if (ctx == null) {
+            callback(Result.failure(Exception("Context is null, cannot check status for authorization request.")))
+            return
+        }
+
+        // Check if the permission was granted previously
+        val healthConnectClient = HealthConnectClient.getOrCreate(ctx)
+        var hasGrantedPermissions = false
+        runBlocking {
+            val granted = healthConnectClient.permissionController.getGrantedPermissions()
+            hasGrantedPermissions = granted.containsAll(permissions)
+        }
+
+        // Has granted permissions already no need to request permission and display system ui
+        if (hasGrantedPermissions) {
+            callback(Result.success(RequestStatusForAuthorization.UNNECESSARY))
+            return
+        }
+
+        val denialCounter = PermissionDenialCounter(ctx)
+        var isOverLimit = false
+        runBlocking {
+            isOverLimit = denialCounter.isOverLimit(getCombinedKey(permissions))
+        }
+
+        // Permissions not granted but request permission system ui has been exhausted
+        if (isOverLimit) {
+            callback(Result.success(RequestStatusForAuthorization.UNNECESSARY))
+            return
+        }
+
+        // No permissions granted and request permission system ui has not been exhausted
+        callback(Result.success(RequestStatusForAuthorization.SHOULD_REQUEST))
+    }
+
+    override fun getAuthorizationStatus(callback: (Result<AuthorizationStatus>) -> Unit) {
         val healthConnectClient = HealthConnectClient.getOrCreate(activityBinding!!.activity)
         scope.launch {
             val granted = healthConnectClient.permissionController.getGrantedPermissions()
             if (granted.containsAll(permissions)) {
-                callback(Result.success(true))
+                callback(Result.success(AuthorizationStatus.AUTHORIZED))
             } else {
-                callback(Result.success(false))
+                callback(Result.success(AuthorizationStatus.DENIED))
             }
         }
     }
 
-    override fun requestPermission(callback: (Result<Boolean>) -> Unit) {
+    override fun requestAuthorization(callback: (Result<Boolean>) -> Unit) {
         log("requestMindfulMinutesAuthorization")
         scope.launch {
             // Check if permissions are already granted
@@ -176,6 +222,20 @@ class FlutterMindfulMinutesPlugin() :
         val allGranted = granted.containsAll(permissions)
         pendingResult?.success(allGranted)
         pendingResult = null
+
+        // check if permissions were granted and
+        // if not increment the denial counter
+        if (!allGranted) {
+            val safeContext = context
+            if (context == null) {
+                log("Context is null, cannot increment denial counter")
+                return
+            }
+            val denialCounter = PermissionDenialCounter(context!!)
+            scope.launch {
+                denialCounter.incrementDenialCount(getCombinedKey(permissions))
+            }
+        }
     }
 
     override fun writeMindfulMinutes(
@@ -230,6 +290,10 @@ class FlutterMindfulMinutesPlugin() :
             HealthConnectFeatures.FEATURE_MINDFULNESS_SESSION
         )
         return (status == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE)
+    }
+
+    private fun getCombinedKey(permissions: Set<String>): String {
+        return permissions.sorted().joinToString(",").hashCode().toString()
     }
 
 }

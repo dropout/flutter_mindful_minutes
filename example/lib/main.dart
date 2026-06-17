@@ -50,6 +50,53 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  void onCheckIfAvailable(BuildContext context) async {
+    debugPrint('Checking if API is available...');
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final isAvailable = await _flutterMindfulMinutesPlugin.isAvailable();
+    if (!mounted) return;
+    setState(() {
+      _isApiAvailable = isAvailable;
+    });
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text('API available: $isAvailable'),
+      ),
+    );
+  }
+
+  void onGetStatusForRequest(BuildContext context) async {
+    debugPrint('Checking request status...');
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final requestStatus = await _flutterMindfulMinutesPlugin
+        .getRequestForAuthorizationStatus();
+    if (!mounted) return;
+    setState(() {
+      _requestStatus = requestStatus;
+    });
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text('Request status: $requestStatus'),
+      ),
+    );
+  }
+
+  void onGetAuthorizationStatus(BuildContext context) async {
+    debugPrint('Checking authorization status...');
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final authorizationStatus = await _flutterMindfulMinutesPlugin
+        .getAuthorizationStatus();
+    if (!mounted) return;
+    setState(() {
+      _authorizationStatus = authorizationStatus;
+    });
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text('Authorization status: $authorizationStatus'),
+      ),
+    );
+  }
+
   void onRequestAuthorization(BuildContext context) async {
     debugPrint('Requesting permission...');
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -135,14 +182,58 @@ class _MyAppState extends State<MyApp> {
             return Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  buildRow('Health API available:', Text(_isApiAvailable ? 'Yes' : 'No')),                  
-                  buildRow('Request status:', Text(_requestStatus.name)),
-                  buildRow('Authorization status:', Text(_authorizationStatus.name)),                  
+                  Text("STATUS", style: Theme.of(ctx).textTheme.titleMedium),
+                  Divider(),
+                  buildRow(
+                    'Health API available:', 
+                    Text(_isApiAvailable ? 'Yes' : 'No',  
+                      style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
+                        fontWeight: .bold,
+                        color: _isApiAvailable ? Colors.green : Colors.red,
+                      )
+                    )
+                  ),
+                  buildRow(
+                    'Request status:', 
+                    Text(_requestStatus.name,
+                      style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
+                        fontWeight: .bold,
+                        color: _requestStatus == .shouldRequest ? Colors.green : Colors.red,
+                      )
+                    )
+                  ),
+                  buildRow(
+                    'Authorization status:', 
+                    Text(_authorizationStatus.name,
+                      style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
+                          fontWeight: .bold,
+                          color: _authorizationStatus == .authorized ? Colors.green : Colors.red,
+                        )
+                    )
+                  ),                  
                   SizedBox(height: 32),
+                  Text("ACTIONS", style: Theme.of(ctx).textTheme.titleMedium),
+                  Divider(),
+                  OutlinedButton(
+                    onPressed: () => onCheckIfAvailable(ctx),
+                    child: Text(
+                      'Check availability', 
+                      textAlign: .center,                     
+                    ),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => onGetStatusForRequest(ctx),
+                    child: const Text('Check request status', textAlign: .center),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => onGetAuthorizationStatus(ctx),
+                    child: const Text('Check authorization status', textAlign: .center),
+                  ),
                   OutlinedButton(
                     onPressed: () => onRequestAuthorization(ctx),
-                    child: const Text('Request access', textAlign: .center),
+                    child: const Text('Launch request System UI', textAlign: .center),
                   ),
                   OutlinedButton(
                     onPressed: () => onWriteMindfulMinutes(ctx),
