@@ -5,6 +5,9 @@ import 'package:pigeon/pigeon.dart';
     dartOut: 'lib/flutter_mindful_minutes.g.dart',
     kotlinOut:
       'android/src/main/kotlin/dev/adampalinkas/flutter_mindful_minutes/FlutterMindfulMinutesPlugin.g.kt',
+    kotlinOptions: KotlinOptions(
+      errorClassName: 'FlutterMindfulMinutesPluginError'
+    ),
     swiftOut: 'ios/flutter_mindful_minutes/Sources/flutter_mindful_minutes/FlutterMindfulMinutesPlugin.g.swift',
     dartPackageName: 'flutter_mindful_minutes',
   )
