@@ -41,7 +41,7 @@ class FlutterMindfulMinutesPlugin() :
 
     private var activityBinding: ActivityPluginBinding? = null
     private var permissionLauncher: ActivityResultLauncher<Set<String>>? = null
-    private var pendingResult: MethodChannel.Result? = null
+    private var pendingAuthorizationCallback: ((Result<Boolean>) -> Unit)? = null
 
     private val scope = CoroutineScope(Dispatchers.Main)
 
@@ -197,6 +197,8 @@ class FlutterMindfulMinutesPlugin() :
                 val isSupported = checkMindfulnessSupport(healthConnectClient)
                 if (!isSupported) {
                     Log.e("HealthConnect", "Mindfulness is not yet supported on this device's OS version.")
+                    // Return failure callback instead of just silent return
+                    callback(Result.failure(Exception("Mindfulness is not yet supported on this device's OS version.")))
                     return@launch
                 }
                 val granted = healthConnectClient.permissionController.getGrantedPermissions()
@@ -208,6 +210,7 @@ class FlutterMindfulMinutesPlugin() :
                     val launcher = permissionLauncher
                     if (launcher != null) {
                         Log.d("FlutterMindfulMinutesPlugin", "Requesting permissions: $permissions")
+                        pendingAuthorizationCallback = callback
                         activityBinding?.activity?.runOnUiThread {
                             launcher.launch(permissions)
                         }
@@ -224,8 +227,6 @@ class FlutterMindfulMinutesPlugin() :
     private fun handlePermissionResult(granted: Set<String>) {
         log("handlePermissionResult: $granted")
         val allGranted = granted.containsAll(permissions)
-        pendingResult?.success(allGranted)
-        pendingResult = null
 
         // check if permissions were granted and
         // if not increment the denial counter
@@ -239,6 +240,9 @@ class FlutterMindfulMinutesPlugin() :
                 denialCounter.incrementDenialCount(getCombinedKey(permissions))
             }
         }
+
+        pendingAuthorizationCallback?.invoke(Result.success(allGranted))
+        pendingAuthorizationCallback = null
     }
 
     override fun writeMindfulMinutes(
