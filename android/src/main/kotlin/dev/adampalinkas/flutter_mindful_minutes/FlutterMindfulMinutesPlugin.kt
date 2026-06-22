@@ -158,17 +158,21 @@ class FlutterMindfulMinutesPlugin() :
 
         val denialCounter = PermissionDenialCounter(ctx)
         var isOverLimit = false
+        var denialCount = 0
         runBlocking {
             isOverLimit = denialCounter.isOverLimit(getCombinedKey(permissions))
+            denialCount = denialCounter.getDenialCount(getCombinedKey(permissions))
         }
 
         // Permissions not granted but request permission system ui has been exhausted
         if (isOverLimit) {
             callback(Result.success(RequestStatusForAuthorization.UNNECESSARY))
+            log("Showing request permission system ui has been exhausted, Denial count: $denialCount, isOverLimit: $isOverLimit, hasGrantedPermissions: $hasGrantedPermissions")
             return
         }
 
         // No permissions granted and request permission system ui has not been exhausted
+        log("A request for permission can be performed, Denial count: $denialCount, isOverLimit: $isOverLimit, hasGrantedPermissions: $hasGrantedPermissions")
         callback(Result.success(RequestStatusForAuthorization.SHOULD_REQUEST))
     }
 
@@ -226,7 +230,6 @@ class FlutterMindfulMinutesPlugin() :
         // check if permissions were granted and
         // if not increment the denial counter
         if (!allGranted) {
-            val safeContext = context
             if (context == null) {
                 log("Context is null, cannot increment denial counter")
                 return

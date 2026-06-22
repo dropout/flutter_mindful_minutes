@@ -54,4 +54,14 @@ class PermissionDenialCounter(private val context: Context) {
             preferences.remove(key)
         }
     }
+
+    /**
+     * Retrieves the current denial count for a permission.
+     */
+    suspend fun getDenialCount(permissionName: String): Int {
+        val key = getDenialCountKey(permissionName)
+        return context.dataStore.data.map { preferences ->
+            preferences[key] ?: 0
+        }.first()
+    }
 }
