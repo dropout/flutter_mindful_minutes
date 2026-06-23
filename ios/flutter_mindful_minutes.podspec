@@ -15,7 +15,7 @@ A new Flutter plugin project.
   s.source           = { :path => '.' }
   s.source_files = 'flutter_mindful_minutes/Sources/flutter_mindful_minutes/**/*.swift'
   s.dependency 'Flutter'
-  s.dependency 'Logger', '~> 1.4.0'
+  s.dependency 'Logging', '~> 1.4.0'
   s.dependency 'HealthKitReporter', '~> 3.1.0'
   s.platform = :ios, '15.6'
 
