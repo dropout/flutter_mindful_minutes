@@ -1,6 +1,6 @@
 name: flutter_mindful_minutes
 description: "A new Flutter plugin project."
-version: 0.1.0
+version: 0.1.1
 publish_to: 'none'
 homepage:
 
@@ -11,7 +11,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  pigeon: ^26.1.7
+  pigeon: ^28.0.0
   plugin_platform_interface: ^2.0.2
 
 dev_dependencies:
