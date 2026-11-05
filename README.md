@@ -142,12 +142,12 @@ class MainActivity: FlutterFragmentActivity() {
 }
 ```
 
-- Ensure your app depends on the Google Play services / Health Connect provider described in the Health Connect docs. The plugin checks Health Connect availability and will return `false` from `isAvailable()` if the provider or SDK is not available or needs an update.
+- Ensure your app depends on the Google Play services / Health Connect provider described in the Health Connect docs. The plugin checks Health Connect availability and `checkAvailability()` throws `HealthDataUnavailableException` or `ProviderUpdateRequiredException` if the SDK is not available or the provider needs an update.
 
 - The plugin requests write permission for `MindfulnessSessionRecord` through Health Connect's `PermissionController`.
 
 Notes & tips:
-- If `isAvailable()` returns `false` on a device where you expect Health Connect to be available, ensure the Health Connect provider app is installed/updated and that Google Play Services are up-to-date.
+- If `checkAvailability()` throws on a device where you expect Health Connect to be available, ensure the Health Connect provider app is installed/updated and that Google Play Services are up-to-date.
 - On some OEM devices Health Connect features may be missing or behind OS version checks.
 
 ### iOS
@@ -170,9 +170,9 @@ Example Info.plist snippet (replace the messages):
 <string>We update your mindful minutes to reflect sessions you log from the app.</string>
 ```
 
-3. HealthKit is not available on iPad simulators or some devices—`isAvailable()` will return false when HealthKit is unavailable.
+3. HealthKit is not available on iPad simulators or some devices—`checkAvailability()` throws `HealthDataUnavailableException` when HealthKit is unavailable.
 
-Always test on a real device or supported simulator when working with HealthKit. If you see `isAvailable()` returning `false`, confirm you're testing on a supported platform and that the HealthKit capability and Info.plist entries are correctly set.
+Always test on a real device or supported simulator when working with HealthKit. If `checkAvailability()` throws, confirm you're testing on a supported platform. A missing HealthKit capability is reported as `MissingEntitlementException` by the other methods.
 
 ---
 
@@ -184,8 +184,8 @@ TL;DR: All timestamps are passed in *seconds* (Unix epoch seconds).
 
 Public API (Dart):
 
-- `Future<bool> isAvailable()`
-  - Returns `true` if the platform's health API and mindfulness session record type are supported and available.
+- `Future<void> checkAvailability()`
+  - Completes normally if the platform's health API and mindfulness session record type are supported and available, otherwise throws a `MindfulMinutesUnavailableException` subtype describing the reason.
 
 - `Future<AuthorizationStatus> getAuthorizationStatus()`
   - Returns the current permission status for writing mindful minutes (`denied`, `notDetermined`, `authorized`, or `unknown`).
@@ -205,8 +205,11 @@ Examples (Dart):
 void main() async {
   final plugin = FlutterMindfulMinutes();
 
-  final available = await plugin.isAvailable();
-  if (!available) return; // platform does not support mindful minutes
+  try {
+    await plugin.checkAvailability();
+  } on MindfulMinutesUnavailableException {
+    return; // platform does not support mindful minutes
+  }
 
   final authorizationStatus = await plugin.getAuthorizationStatus();
   if (authorizationStatus != AuthorizationStatus.authorized) {
@@ -250,9 +253,9 @@ sequenceDiagram
   participant App as Flutter App
   participant Dart as Dart plugin
   participant Native as Native (Android/iOS)
-  App->>Dart: call isAvailable()
-  Dart->>Native: isAvailable()
-  Native-->>Dart: bool
+  App->>Dart: call checkAvailability()
+  Dart->>Native: checkAvailability()
+  Native-->>Dart: ok / typed error
   App->>Dart: call hasPermission()
   Dart->>Native: hasPermission()
   Native-->>Dart: bool
@@ -272,14 +275,14 @@ sequenceDiagram
 
 - Time units: The plugin sends times as *seconds since epoch* to native. The Dart wrapper converts `DateTime` (milliseconds) -> seconds by dividing by 1000 and calling `.toInt()`.
 
-- On **Android**, `isAvailable()` performs several checks:
+- On **Android**, `checkAvailability()` performs several checks:
   - Health Connect SDK availability
   - Mindfulness session feature support by the provider
   - The attached activity being a `FlutterFragmentActivity` (to support permission flow)
 
-  If any of those checks fail the plugin returns `false` and logs a helpful message.
+  If any of those checks fail the plugin throws the matching `MindfulMinutesUnavailableException` subtype and logs a helpful message.
 
-- On **iOS**, `isAvailable()` checks `HKHealthStore.isHealthDataAvailable()`.
+- On **iOS**, `checkAvailability()` checks `HKHealthStore.isHealthDataAvailable()`.
 
 - The plugin currently records a `title` of "Meditation" (Android) and uses a category HK sample on iOS. If you want localized/custom titles, consider contributing a PR to expose a title parameter.
 
@@ -299,11 +302,37 @@ This gives Flutter callers one consistent permission-check API, while platform-s
 
 ---
 
+## Error handling
+
+Every method throws a subtype of the sealed `FlutterMindfulMinutesException` on failure, so errors can be handled by type:
+
+```dart
+try {
+  await plugin.checkAvailability();
+} on ProviderUpdateRequiredException {
+  // ask the user to install / update Health Connect
+} on MindfulMinutesUnavailableException catch (e) {
+  // any other reason mindful minutes can't be used on this device
+}
+```
+
+| Exception | Platform | Cause |
+| --- | --- | --- |
+| `HealthDataUnavailableException` | iOS, Android | HealthKit / Health Connect is not available on the device. |
+| `ProviderUpdateRequiredException` | Android | The Health Connect provider must be installed or updated. |
+| `MindfulnessNotSupportedException` | Android | Health Connect doesn't support mindfulness sessions on this device. |
+| `ActivityNotSupportedException` | Android | `MainActivity` doesn't extend `FlutterFragmentActivity`. |
+| `MissingEntitlementException` | iOS | The HealthKit capability is not enabled for the app target in Xcode. |
+| `MissingPermissionDeclarationException` | Android | `android.permission.health.WRITE_MINDFULNESS` is not declared in `AndroidManifest.xml`. |
+| `UnknownMindfulMinutesException` | iOS, Android | Any other platform error; `code`, `message` and `details` hold the original info. |
+
+The first four extend the sealed `MindfulMinutesUnavailableException` and are thrown by `checkAvailability()`. `HealthDataUnavailableException` can also be thrown by the other methods when they are called on a device without health data support. Because the hierarchy is sealed, a `switch` over the exception is checked for exhaustiveness.
+
 ## Troubleshooting
 
 - iOS: If HealthKit dialogs never appear or you receive errors, confirm the HealthKit capability and `Info.plist` keys are set.
 - Android: If `requestPermission()` fails with launcher not initialized, ensure `MainActivity` extends `FlutterFragmentActivity` so the plugin can register an `ActivityResultLauncher`.
-- If `isAvailable()` returns `false`, verify the device has the Health Connect provider installed/updated (Android) or that the device supports HealthKit (iOS).
+- If `checkAvailability()` throws, the exception type tells the reason (see [Error handling](#error-handling)).
 
 ---
 
@@ -345,7 +374,7 @@ Android
 - [ ] Install or update the Health Connect provider app on the test device (Google's Health Connect provider package: `com.google.android.apps.healthdata`).
 - [ ] Run the example app on a physical Android device with Health Connect installed and perform the flow:
   - Launch the example app.
-  - Tap the button that calls `isAvailable()` — expect `true` for supported devices.
+  - Tap the button that calls `checkAvailability()` — expect it to complete without an error on supported devices.
   - If not available, inspect logs for SDK/provider messages.
   - Call `requestPermission()` and confirm the platform permission UI appears; accept and verify `hasPermission()` returns `true`.
   - Call `writeMindfulMinutes(...)` and verify the native Health app shows the newly inserted session.
@@ -355,7 +384,7 @@ iOS
 - [ ] Add HealthKit capability in Xcode (Target → Signing & Capabilities → + Capability → HealthKit).
 - [ ] Add `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` to `Info.plist` with concise user-facing reasons.
 - [ ] Test on a device or supported simulator where HealthKit is available (note: some simulators or iPad simulators may not support HealthKit).
-- [ ] Run the example app and perform the flow (same steps as Android): check `isAvailable()`, request permission, then write a session and confirm it appears in Health.
+- [ ] Run the example app and perform the flow (same steps as Android): check `checkAvailability()`, request permission, then write a session and confirm it appears in Health.
 
 Cross-platform / developer checks
 

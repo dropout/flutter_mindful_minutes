@@ -2,8 +2,11 @@ package dev.adampalinkas.flutter_mindful_minutes
 
 import AuthorizationStatus
 import FlutterMindfulMinutesHostApi
+import FlutterMindfulMinutesPluginError
 import RequestStatusForAuthorization
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.result.ActivityResultLauncher
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.HealthConnectFeatures
@@ -30,6 +33,15 @@ import java.time.ZoneOffset
 
 
 
+
+/** Error codes sent to the Dart side, they have to match `MindfulMinutesErrorCodes` in Dart. */
+object ErrorCodes {
+    const val HEALTH_DATA_UNAVAILABLE = "health_data_unavailable"
+    const val PROVIDER_UPDATE_REQUIRED = "provider_update_required"
+    const val MINDFULNESS_NOT_SUPPORTED = "mindfulness_not_supported"
+    const val ACTIVITY_NOT_SUPPORTED = "activity_not_supported"
+    const val MISSING_PERMISSION_DECLARATION = "missing_permission_declaration"
+}
 
 /** FlutterMindfulMinutesPlugin */
 class FlutterMindfulMinutesPlugin() :
@@ -98,7 +110,7 @@ class FlutterMindfulMinutesPlugin() :
      *  FlutterMindfulMinutesHostApi
      */
 
-    override fun isAvailable(callback: (Result<Boolean>) -> Unit) {
+    override fun checkAvailability(callback: (Result<Unit>) -> Unit) {
         log("Checking if functionality is available")
         val ctx = context
 
@@ -107,31 +119,41 @@ class FlutterMindfulMinutesPlugin() :
             return
         }
 
-        val isHealthConnectSDKAvailable = checkHealthConnectSDKAvailability()
-        if (!isHealthConnectSDKAvailable) {
-            log("Health Connect SDK is not available")
-            callback(Result.success(false))
-            return
+        when (HealthConnectClient.getSdkStatus(ctx)) {
+            HealthConnectClient.SDK_AVAILABLE -> log("Health Connect SDK is available")
+            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+                log("Health Connect provider update required")
+                callback(Result.failure(FlutterMindfulMinutesPluginError(
+                    ErrorCodes.PROVIDER_UPDATE_REQUIRED,
+                    "The Health Connect provider has to be installed or updated."
+                )))
+                return
+            }
+            else -> {
+                log("Health Connect SDK is not available")
+                callback(Result.failure(FlutterMindfulMinutesPluginError(
+                    ErrorCodes.HEALTH_DATA_UNAVAILABLE,
+                    "Health Connect is not available on this device."
+                )))
+                return
+            }
         }
 
         val healthConnectClient = HealthConnectClient.getOrCreate(ctx)
-        val isMindfulnessSupported = checkMindfulnessSupport(healthConnectClient)
-
-        if (!isMindfulnessSupported) {
+        if (!checkMindfulnessSupport(healthConnectClient)) {
             log("MindfulnessSessionRecord is not supported, try to update Google Play Services")
-            callback(Result.success(false))
+            callback(Result.failure(mindfulnessNotSupportedError()))
             return
         }
 
-        val activity = activityBinding?.activity as? FlutterFragmentActivity
-        if (activity == null) {
+        if (activityBinding?.activity !is FlutterFragmentActivity) {
             log("Cannot cast activity to FlutterFragmentActivity, does your MainActivity extend FlutterFragmentActivity?")
-            callback(Result.success(false))
+            callback(Result.failure(activityNotSupportedError()))
             return
         }
 
         log("Mindful minutes is supported")
-        callback(Result.success(true))
+        callback(Result.success(Unit))
     }
 
 
@@ -198,7 +220,11 @@ class FlutterMindfulMinutesPlugin() :
                 if (!isSupported) {
                     Log.e("HealthConnect", "Mindfulness is not yet supported on this device's OS version.")
                     // Return failure callback instead of just silent return
-                    callback(Result.failure(Exception("Mindfulness is not yet supported on this device's OS version.")))
+                    callback(Result.failure(mindfulnessNotSupportedError()))
+                    return@launch
+                }
+                if (!arePermissionsDeclared()) {
+                    callback(Result.failure(missingPermissionDeclarationError()))
                     return@launch
                 }
                 val granted = healthConnectClient.permissionController.getGrantedPermissions()
@@ -215,7 +241,7 @@ class FlutterMindfulMinutesPlugin() :
                             launcher.launch(permissions)
                         }
                     } else {
-                        callback(Result.failure(Exception("Permission launcher is not initialized. Extended your projects MainActivity with FlutterFragmentActivity instead of FlutterActivity?")))
+                        callback(Result.failure(activityNotSupportedError()))
                     }
                 }
             } catch (e: Exception) {
@@ -253,6 +279,10 @@ class FlutterMindfulMinutesPlugin() :
         log("Writing mindful minutes")
         scope.launch {
             try {
+                if (!arePermissionsDeclared()) {
+                    callback(Result.failure(missingPermissionDeclarationError()))
+                    return@launch
+                }
                 val healthConnectClient = HealthConnectClient.getOrCreate(activityBinding!!.activity)
                 val record = MindfulnessSessionRecord(
                     startTime = Instant.ofEpochSecond(startSeconds),
@@ -271,26 +301,40 @@ class FlutterMindfulMinutesPlugin() :
         }
     }
 
-    fun checkHealthConnectSDKAvailability(): Boolean {
-        val ctx = context ?: throw Exception("Context is null, cannot check availability")
-
-        val sdkStatus = HealthConnectClient.getSdkStatus(ctx)
-        if (sdkStatus == HealthConnectClient.SDK_UNAVAILABLE) {
-            log("Health Connect SDK is not available")
-            return false
+    /** Checks that every required Health Connect permission is declared in the app's manifest. */
+    private fun arePermissionsDeclared(): Boolean {
+        val ctx = context ?: return true
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ctx.packageManager.getPackageInfo(
+                ctx.packageName,
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            ctx.packageManager.getPackageInfo(ctx.packageName, PackageManager.GET_PERMISSIONS)
         }
-        if (sdkStatus == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
-            log("Health Connect provider update required")
-            return false
+        val declared = packageInfo.requestedPermissions?.toSet() ?: emptySet()
+        val missing = permissions - declared
+        if (missing.isNotEmpty()) {
+            log("Permissions are not declared in AndroidManifest.xml: $missing")
         }
-
-        if (sdkStatus == HealthConnectClient.SDK_AVAILABLE) {
-            log("Health Connect SDK is available")
-            return true
-        }
-
-        return false
+        return missing.isEmpty()
     }
+
+    private fun mindfulnessNotSupportedError() = FlutterMindfulMinutesPluginError(
+        ErrorCodes.MINDFULNESS_NOT_SUPPORTED,
+        "Mindfulness sessions are not supported by Health Connect on this device. Updating Google Play services may help."
+    )
+
+    private fun activityNotSupportedError() = FlutterMindfulMinutesPluginError(
+        ErrorCodes.ACTIVITY_NOT_SUPPORTED,
+        "Permission launcher is not initialized. Extend your project's MainActivity from FlutterFragmentActivity instead of FlutterActivity."
+    )
+
+    private fun missingPermissionDeclarationError() = FlutterMindfulMinutesPluginError(
+        ErrorCodes.MISSING_PERMISSION_DECLARATION,
+        "Missing permission declaration. Add <uses-permission android:name=\"${permissions.joinToString()}\"/> to your app's AndroidManifest.xml."
+    )
 
     fun checkMindfulnessSupport(healthConnectClient: HealthConnectClient) : Boolean {
         val status = healthConnectClient.features.getFeatureStatus(

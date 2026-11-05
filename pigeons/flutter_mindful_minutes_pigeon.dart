@@ -38,19 +38,21 @@ class AuthorizationResult {
 @HostApi()
 abstract class FlutterMindfulMinutesHostApi {
 
-  @async
-  bool isAvailable();
+  /// Completes normally when mindful minutes can be used on this device,
+  /// otherwise fails with a coded error describing the reason.
+  @asyncCallback
+  void checkAvailability();
 
-  @async
+  @asyncCallback
   AuthorizationStatus getAuthorizationStatus();
 
-  @async
+  @asyncCallback
   RequestStatusForAuthorization getRequestForAuthorizationStatus();
 
-  @async
+  @asyncCallback
   bool requestAuthorization();
 
-  @async
+  @asyncCallback
   bool writeMindfulMinutes(int startSeconds, int endSeconds);
 
 }

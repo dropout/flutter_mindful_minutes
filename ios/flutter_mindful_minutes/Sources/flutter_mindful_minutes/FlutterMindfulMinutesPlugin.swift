@@ -8,6 +8,38 @@ import SwiftUI
 
 var _hostApi : FlutterMindfulMinutesHostApi? = nil
 
+/// Error codes sent to the Dart side, they have to match `MindfulMinutesErrorCodes` in Dart.
+enum ErrorCodes {
+  static let healthDataUnavailable = "health_data_unavailable"
+  static let mindfulnessNotSupported = "mindfulness_not_supported"
+  static let missingEntitlement = "missing_entitlement"
+}
+
+/// Converts known HealthKit errors to `PigeonError`s with a stable code,
+/// so the Dart side can throw a typed exception. Other errors are returned unchanged.
+func mapHealthKitError(_ error: Error) -> Error {
+  let nsError = error as NSError
+  let details: [String: Any] = [
+    "domain": nsError.domain,
+    "code": nsError.code,
+    "description": nsError.localizedDescription,
+  ]
+
+  // HealthKit reports a missing entitlement as `errorAuthorizationDenied` (code 4)
+  // with the entitlement name in the description, there is no dedicated error code.
+  if nsError.domain == HKErrorDomain,
+     nsError.code == HKError.Code.errorAuthorizationDenied.rawValue,
+     nsError.localizedDescription.contains("com.apple.developer.healthkit") {
+    return PigeonError(
+      code: ErrorCodes.missingEntitlement,
+      message: "Missing com.apple.developer.healthkit entitlement. Enable the HealthKit capability for your app target in Xcode (Signing & Capabilities).",
+      details: details
+    )
+  }
+
+  return error
+}
+
 public class FlutterMindfulMinutesPlugin: NSObject, FlutterPlugin {
   
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -37,9 +69,17 @@ class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
     self.logger = logger
   }
   
-  func isAvailable(completion: @escaping (Result<Bool, any Error>) -> Void) {
+  func checkAvailability(completion: @escaping (Result<Void, any Error>) -> Void) {
     logger.debug("Checking if HealthKit is available")
-    completion(.success(HKHealthStore.isHealthDataAvailable()))
+    guard HKHealthStore.isHealthDataAvailable() else {
+      completion(.failure(PigeonError(code: ErrorCodes.healthDataUnavailable, message: "Health data is not available on this device.", details: nil)))
+      return
+    }
+    guard HKObjectType.categoryType(forIdentifier: .mindfulSession) != nil else {
+      completion(.failure(PigeonError(code: ErrorCodes.mindfulnessNotSupported, message: "Mindful Session type is unavailable on this device.", details: nil)))
+      return
+    }
+    completion(.success(()))
   }
   
   func getAuthorizationStatus(completion: @escaping (Result<AuthorizationStatus, any Error>) -> Void) {
@@ -47,7 +87,7 @@ class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
     
     // Check if HealthKit is available
     guard HKHealthStore.isHealthDataAvailable() else {
-      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 6, userInfo: [NSLocalizedDescriptionKey: "Health data is not available on this device, cannot check authorization for writing mindful minutes."])) )
+      completion(.failure(PigeonError(code: ErrorCodes.healthDataUnavailable, message: "Health data is not available on this device, cannot check authorization for writing mindful minutes.", details: nil)) )
       return
     }
 
@@ -85,7 +125,7 @@ class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
     
     // Check if HealthKit is available
     guard HKHealthStore.isHealthDataAvailable() else {
-      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 6, userInfo: [NSLocalizedDescriptionKey: "Health data is not available on this device, cannot check authorization for writing mindful minutes."])) )
+      completion(.failure(PigeonError(code: ErrorCodes.healthDataUnavailable, message: "Health data is not available on this device, cannot check authorization for writing mindful minutes.", details: nil)) )
       return
     }
 
@@ -98,7 +138,7 @@ class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
     let healthStore = HKHealthStore()
     healthStore.getRequestStatusForAuthorization(toShare: [mindfulType], read: [mindfulType]) { (status, error) in
       if let error = error {
-        completion(.failure(error))
+        completion(.failure(mapHealthKitError(error)))
       } else {
         switch status {
           case .shouldRequest:
@@ -125,7 +165,7 @@ class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
 
     // Ensure HealthKit is available on this device
     guard HKHealthStore.isHealthDataAvailable() else {
-      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 1, userInfo: [NSLocalizedDescriptionKey: "Health data is not available on this device."])) )
+      completion(.failure(PigeonError(code: ErrorCodes.healthDataUnavailable, message: "Health data is not available on this device.", details: nil)) )
       return
     }
 
@@ -141,7 +181,7 @@ class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
     // Success in .requestAuthorization only indicates wheter the sheet have been presented or not
     healthStore.requestAuthorization(toShare: toShare, read: toRead) { success, error in
       if let error = error {
-        completion(.failure(error))
+        completion(.failure(mapHealthKitError(error)))
         return
       }
       completion(.success(success))
@@ -153,7 +193,7 @@ class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
     let healthStore = HKHealthStore()
 
     guard HKHealthStore.isHealthDataAvailable() else {
-      completion(.failure(NSError(domain: "FlutterMindfulMinutes", code: 3, userInfo: [NSLocalizedDescriptionKey: "Health data is not available on this device."])) )
+      completion(.failure(PigeonError(code: ErrorCodes.healthDataUnavailable, message: "Health data is not available on this device.", details: nil)) )
       return
     }
 
@@ -176,7 +216,7 @@ class FlutterMindfulMinutesHostApiImpl : FlutterMindfulMinutesHostApi {
 
     healthStore.save(sample) { success, error in
       if let error = error {
-        completion(.failure(error))
+        completion(.failure(mapHealthKitError(error)))
         return
       }
       completion(.success(success))

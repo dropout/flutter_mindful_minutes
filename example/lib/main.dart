@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:async';
 
 import 'package:flutter_mindful_minutes/flutter_mindful_minutes.dart';
@@ -18,6 +17,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   bool _initialized = false;
   bool _isApiAvailable = false;
+  String? _errorMessage;
   AuthorizationStatus _authorizationStatus = .unknown;
   RequestStatusForAuthorization _requestStatus = .unknown;
 
@@ -31,7 +31,7 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> initPlatformState() async {
     try {
-      final isAvailable = await _flutterMindfulMinutesPlugin.isAvailable();
+      await _flutterMindfulMinutesPlugin.checkAvailability();
       final authorizationStatus = await _flutterMindfulMinutesPlugin
           .getAuthorizationStatus();
       final requestStatus = await _flutterMindfulMinutesPlugin
@@ -40,32 +40,60 @@ class _MyAppState extends State<MyApp> {
       if (!mounted) return;
 
       setState(() {
-        _initialized = true;
-        _isApiAvailable = isAvailable;
+        _isApiAvailable = true;
         _authorizationStatus = authorizationStatus;
         _requestStatus = requestStatus;
       });
-    } catch (e) {
+    } on FlutterMindfulMinutesException catch (e) {
       debugPrint('Error initializing platform state: $e');
+      if (!mounted) return;
+      setState(() => _errorMessage = describeError(e));
+    } finally {
+      if (mounted) setState(() => _initialized = true);
     }
   }
+
+  /// Shows how to react to each exception type of the plugin.
+  String describeError(FlutterMindfulMinutesException e) => switch (e) {
+    HealthDataUnavailableException() => 'Health data is not available on this device.',
+    ProviderUpdateRequiredException() => 'Install or update Health Connect.',
+    MindfulnessNotSupportedException() => 'Mindfulness is not supported, update Google Play services.',
+    ActivityNotSupportedException() => 'MainActivity must extend FlutterFragmentActivity.',
+    MissingEntitlementException() => 'Enable the HealthKit capability in Xcode.',
+    MissingPermissionDeclarationException() => 'Declare WRITE_MINDFULNESS in AndroidManifest.xml.',
+    UnknownMindfulMinutesException(:final code, :final message) => 'Unknown error ($code): $message',
+  };
 
   void onCheckIfAvailable(BuildContext context) async {
     debugPrint('Checking if API is available...');
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    final isAvailable = await _flutterMindfulMinutesPlugin.isAvailable();
+    String result;
+    try {
+      await _flutterMindfulMinutesPlugin.checkAvailability();
+      result = 'API available';
+      setState(() => _isApiAvailable = true);
+    } on MindfulMinutesUnavailableException catch (e) {
+      result = 'API not available: ${describeError(e)}';
+      setState(() => _isApiAvailable = false);
+    } on FlutterMindfulMinutesException catch (e) {
+      result = describeError(e);
+    }
     if (!mounted) return;
-    setState(() {
-      _isApiAvailable = isAvailable;
-    });
-    scaffoldMessenger.showSnackBar(
-      SnackBar(
-        content: Text('API available: $isAvailable'),
-      ),
-    );
+    scaffoldMessenger.showSnackBar(SnackBar(content: Text(result)));
   }
 
-  void onGetStatusForRequest(BuildContext context) async {
+  /// Runs [action] and shows a snackbar with the error if it fails.
+  Future<void> guarded(BuildContext context, Future<void> Function() action) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    try {
+      await action();
+    } on FlutterMindfulMinutesException catch (e) {
+      debugPrint('Plugin error: $e');
+      scaffoldMessenger.showSnackBar(SnackBar(content: Text(describeError(e))));
+    }
+  }
+
+  Future<void> onGetStatusForRequest(BuildContext context) async {
     debugPrint('Checking request status...');
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final requestStatus = await _flutterMindfulMinutesPlugin
@@ -81,7 +109,7 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  void onGetAuthorizationStatus(BuildContext context) async {
+  Future<void> onGetAuthorizationStatus(BuildContext context) async {
     debugPrint('Checking authorization status...');
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final authorizationStatus = await _flutterMindfulMinutesPlugin
@@ -97,7 +125,7 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  void onRequestAuthorization(BuildContext context) async {
+  Future<void> onRequestAuthorization(BuildContext context) async {
     debugPrint('Requesting permission...');
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final requestSheetShown = await _flutterMindfulMinutesPlugin
@@ -146,24 +174,11 @@ class _MyAppState extends State<MyApp> {
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Successfully wrote mindful minutes')),
       );
-    } on PlatformException catch (e) {
+    } on FlutterMindfulMinutesException catch (e) {
       scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to write mindful minutes from. Error: ${e.message} Code: ${e.code}',
-          ),
-        ),
+        SnackBar(content: Text('Failed to write mindful minutes: ${describeError(e)}')),
       );
-      debugPrint('PlatformException occured writing mindful minutes: $e');
-    } catch (e) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Unknown error writing mindful minutes.',
-          ),
-        ),
-      );
-      debugPrint('Unknown error writing mindful minutes: $e');
+      debugPrint('Error writing mindful minutes: $e');
     }
   }
 
@@ -186,6 +201,8 @@ class _MyAppState extends State<MyApp> {
                 children: [
                   Text("STATUS", style: Theme.of(ctx).textTheme.titleMedium),
                   Divider(),
+                  if (_errorMessage != null)
+                    Text(_errorMessage!, style: TextStyle(color: Colors.red)),
                   buildRow(
                     'Health API available:', 
                     Text(_isApiAvailable ? 'Yes' : 'No',  
@@ -224,15 +241,15 @@ class _MyAppState extends State<MyApp> {
                     ),
                   ),
                   OutlinedButton(
-                    onPressed: () => onGetStatusForRequest(ctx),
+                    onPressed: () => guarded(ctx, () => onGetStatusForRequest(ctx)),
                     child: const Text('Check request status', textAlign: .center),
                   ),
                   OutlinedButton(
-                    onPressed: () => onGetAuthorizationStatus(ctx),
+                    onPressed: () => guarded(ctx, () => onGetAuthorizationStatus(ctx)),
                     child: const Text('Check authorization status', textAlign: .center),
                   ),
                   OutlinedButton(
-                    onPressed: () => onRequestAuthorization(ctx),
+                    onPressed: () => guarded(ctx, () => onRequestAuthorization(ctx)),
                     child: const Text('Launch request System UI', textAlign: .center),
                   ),
                   OutlinedButton(
