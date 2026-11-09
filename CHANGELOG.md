@@ -1,3 +1,8 @@
+## 0.3.0
+
+* Updates the minimum supported SDK versions to Dart 3.12 and Flutter 3.44.
+* Migrates the Android plugin and example app to built-in Kotlin.
+
 ## 0.2.0
 
 * **Breaking:** `isAvailable()` is replaced by `checkAvailability()`, which completes normally when mindful minutes can be used and throws a `MindfulMinutesUnavailableException` subtype describing the reason otherwise.

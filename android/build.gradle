@@ -2,15 +2,13 @@ group = "dev.adampalinkas.flutter_mindful_minutes"
 version = "1.0-SNAPSHOT"
 
 buildscript {
-    ext.kotlin_version = "2.2.20"
     repositories {
         google()
         mavenCentral()
     }
 
     dependencies {
-        classpath("com.android.tools.build:gradle:8.11.1")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+        classpath("com.android.tools.build:gradle:9.5.0")
     }
 }
 
@@ -22,7 +20,6 @@ allprojects {
 }
 
 apply plugin: "com.android.library"
-apply plugin: "kotlin-android"
 
 android {
     namespace = "dev.adampalinkas.flutter_mindful_minutes"
@@ -32,10 +29,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17
     }
 
     sourceSets {
@@ -64,5 +57,11 @@ android {
                showStandardStreams = true
             }
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
